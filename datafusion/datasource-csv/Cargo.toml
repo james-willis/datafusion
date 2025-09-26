@@ -47,7 +47,13 @@ datafusion-session = { workspace = true }
 futures = { workspace = true }
 object_store = { workspace = true }
 regex = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }
 
 [lints]
 workspace = true

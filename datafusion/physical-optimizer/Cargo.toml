@@ -55,4 +55,10 @@ recursive = { workspace = true, optional = true }
 datafusion-expr = { workspace = true }
 datafusion-functions-nested = { workspace = true }
 insta = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }

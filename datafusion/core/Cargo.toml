@@ -147,7 +147,6 @@ regex = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["derive"], optional = true }
 sqlparser = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true }
 url = { workspace = true }
 uuid = { version = "1.17", features = ["v4", "js"] }
 xz2 = { version = "0.1", optional = true, features = ["static"] }
@@ -174,7 +173,19 @@ rstest = { workspace = true }
 serde_json = { workspace = true }
 sysinfo = "0.37.0"
 test-utils = { path = "../../test-utils" }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "parking_lot", "fs"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["rt-multi-thread", "parking_lot", "fs"] }
 
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies]
 nix = { version = "0.30.1", features = ["fs"] }

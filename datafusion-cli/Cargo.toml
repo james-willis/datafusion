@@ -63,8 +63,14 @@ parking_lot = { workspace = true }
 parquet = { workspace = true, default-features = false }
 regex = { workspace = true }
 rustyline = "17.0"
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "parking_lot", "signal"] }
 url = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "parking_lot", "signal"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "parking_lot", "signal"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"

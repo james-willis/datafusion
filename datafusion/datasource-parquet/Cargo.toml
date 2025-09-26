@@ -56,7 +56,13 @@ object_store = { workspace = true }
 parking_lot = { workspace = true }
 parquet = { workspace = true }
 rand = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }
 
 [dev-dependencies]
 chrono = { workspace = true }

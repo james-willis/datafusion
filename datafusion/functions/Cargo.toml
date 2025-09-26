@@ -88,7 +88,12 @@ uuid = { version = "1.17", features = ["v4"], optional = true }
 arrow = { workspace = true, features = ["test_utils"] }
 criterion = { workspace = true }
 rand = { workspace = true }
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["macros", "rt", "sync"] }
 
 [[bench]]
 harness = false

@@ -80,12 +80,18 @@ rand = { workspace = true }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 test-utils = { path = "../test-utils" }
-tokio = { workspace = true, features = ["rt-multi-thread", "parking_lot"] }
 tonic = "0.13.1"
 tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3" }
 url = { workspace = true }
 uuid = "1.17"
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "parking_lot"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["rt-multi-thread", "parking_lot"] }
 
 [target.'cfg(not(target_os = "windows"))'.dev-dependencies]
 nix = { version = "0.30.1", features = ["fs"] }

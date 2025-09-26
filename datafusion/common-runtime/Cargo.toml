@@ -40,7 +40,18 @@ name = "datafusion_common_runtime"
 [dependencies]
 futures = { workspace = true }
 log = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { workspace = true }
 
-[dev-dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "time"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["rt", "rt-multi-thread", "time"] }
+
+[dev-dependencies]

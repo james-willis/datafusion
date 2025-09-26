@@ -66,7 +66,6 @@ object_store = { workspace = true }
 parquet = { workspace = true, optional = true }
 rand = { workspace = true }
 tempfile = { workspace = true, optional = true }
-tokio = { workspace = true }
 tokio-util = { version = "0.7.16", features = ["io"], optional = true }
 url = { workspace = true }
 xz2 = { version = "0.1", optional = true, features = ["static"] }
@@ -75,6 +74,13 @@ zstd = { version = "0.13", optional = true, default-features = false }
 [dev-dependencies]
 criterion = { workspace = true }
 tempfile = { workspace = true }
+
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true }
 
 [lints]
 workspace = true

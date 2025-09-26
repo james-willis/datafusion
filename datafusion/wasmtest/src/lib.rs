@@ -205,6 +205,7 @@ mod test {
         let _ = collect(physical_plan, task_ctx).await.unwrap();
     }
 
+    #[cfg(feature = "parquet")]
     #[wasm_bindgen_test(unsupported = tokio::test)]
     async fn test_parquet_write() {
         let (schema, batch) = create_test_data();
@@ -220,6 +221,7 @@ mod test {
         writer.close().unwrap();
     }
 
+    #[cfg(feature = "parquet")]
     #[wasm_bindgen_test(unsupported = tokio::test)]
     async fn test_parquet_read_and_write() {
         let (schema, batch) = create_test_data();

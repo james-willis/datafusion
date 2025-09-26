@@ -61,4 +61,9 @@ datafusion-functions-aggregate = { workspace = true }
 datafusion-functions-window-common = { workspace = true }
 doc-comment = { workspace = true }
 pretty_assertions = "1.4"
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+tokio = { package = "tokio-with-wasm", workspace = true, features = ["rt-multi-thread"] }

@@ -149,6 +149,7 @@ datafusion-substrait = { path = "datafusion/substrait", version = "49.0.0" }
 doc-comment = "0.3"
 env_logger = "0.11"
 futures = "0.3"
+getrandom = { version = "0.3", features = ["wasm_js"] }
 half = { version = "2.6.0", default-features = false }
 hashbrown = { version = "0.14.5", features = ["raw"] }
 hex = { version = "0.4.3" }
@@ -177,7 +178,9 @@ sqlparser = { version = "0.58.0", default-features = false, features = ["std", "
 tempfile = "3"
 testcontainers = { version = "0.24", features = ["default"] }
 testcontainers-modules = { version = "0.12" }
+# Use tokio-with-wasm for wasm32 targets, regular tokio otherwise
 tokio = { version = "1.47", features = ["macros", "rt", "sync"] }
+tokio_with_wasm = { version = "0.8.7", features = ["macros", "rt", "sync"] }
 url = "2.5.7"
 
 [profile.release]
