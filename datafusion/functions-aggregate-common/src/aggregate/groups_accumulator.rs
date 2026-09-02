@@ -121,8 +121,13 @@ impl AccumulatorState {
     }
 
     /// Returns the amount of memory taken by this structure and its accumulator
+    ///
+    /// The inline `size_of_val(self)` bytes are deliberately NOT included:
+    /// this state lives inside the adapter's `states` vector, whose
+    /// allocation is accounted separately via `allocated_size()`
+    /// adjustments; including them here double-counted every live group.
     fn size(&self) -> usize {
-        self.accumulator.size() + size_of_val(self) + self.indices.allocated_size()
+        self.accumulator.size() + self.indices.allocated_size()
     }
 }
 
@@ -201,9 +206,19 @@ impl GroupsAccumulatorAdapter {
         // figure out which input rows correspond to which groups.
         // Note that self.state.indices starts empty for all groups
         // (it is cleared out below)
+        //
+        // The indices vectors keep their capacity across batches (the
+        // clear() below retains it) and `sizes_pre` is sampled after these
+        // pushes, so capacity growth here must be accounted explicitly or it
+        // is never seen by the allocation tracker at all.
+        let mut indices_allocation_delta = 0;
         for (idx, group_index) in group_indices.iter().enumerate() {
-            self.states[*group_index].indices.push(idx as u32);
+            let indices = &mut self.states[*group_index].indices;
+            let allocated_pre = indices.allocated_size();
+            indices.push(idx as u32);
+            indices_allocation_delta += indices.allocated_size() - allocated_pre;
         }
+        self.add_allocation(indices_allocation_delta);
 
         // groups_with_rows holds a list of group indexes that have
         // any rows that need to be accumulated, stored in order of
@@ -502,5 +517,72 @@ pub(crate) fn slice_and_maybe_filter(
             .collect()
     } else {
         Ok(sliced_arrays)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    use arrow::array::Int64Array;
+    use datafusion_common::ScalarValue;
+
+    /// A minimal accumulator with a fixed, known size.
+    #[derive(Debug)]
+    struct FixedSizeAccumulator;
+
+    impl Accumulator for FixedSizeAccumulator {
+        fn update_batch(&mut self, _values: &[ArrayRef]) -> Result<()> {
+            Ok(())
+        }
+        fn evaluate(&mut self) -> Result<ScalarValue> {
+            Ok(ScalarValue::Int64(Some(0)))
+        }
+        fn size(&self) -> usize {
+            64
+        }
+        fn state(&mut self) -> Result<Vec<ScalarValue>> {
+            Ok(vec![ScalarValue::Int64(Some(0))])
+        }
+        fn merge_batch(&mut self, _states: &[ArrayRef]) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Regression test: the allocation tracker must observe the capacity of
+    /// the per-group `indices` scratch vectors. They retain capacity across
+    /// batches and the in-loop size sampling happens after the pushes, so
+    /// without explicit accounting their memory was reported as zero forever.
+    #[test]
+    fn adapter_accounts_indices_capacity() {
+        let mut adapter =
+            GroupsAccumulatorAdapter::new(|| Ok(Box::new(FixedSizeAccumulator)));
+
+        let num_rows = 1024_usize;
+        let values: ArrayRef =
+            Arc::new(Int64Array::from(vec![1_i64; num_rows]));
+        // All rows in one group: its indices vector must grow to >= 4 KiB.
+        let group_indices = vec![0_usize; num_rows];
+
+        adapter
+            .update_batch(&[values], &group_indices, None, 1)
+            .unwrap();
+
+        let tracked = adapter.size();
+        let indices_bytes = num_rows * size_of::<u32>();
+        assert!(
+            tracked >= indices_bytes,
+            "adapter must account the indices capacity \
+             (tracked {tracked}, indices alone {indices_bytes})"
+        );
+
+        // A second batch reuses the retained capacity: no double-add.
+        let values2: ArrayRef =
+            Arc::new(Int64Array::from(vec![1_i64; num_rows]));
+        adapter
+            .update_batch(&[values2], &group_indices, None, 1)
+            .unwrap();
+        assert_eq!(adapter.size(), tracked);
     }
 }
