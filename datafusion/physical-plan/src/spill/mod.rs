@@ -74,7 +74,49 @@ const SPILL_BATCH_MEMORY_MARGIN: usize = 4096;
 
 /// When we poll for the next batch, we will get back both the batch and the reader,
 /// so we can call `next` again.
-type NextRecordBatchResult = Result<(StreamReader<BufReader<File>>, Option<RecordBatch>)>;
+type NextRecordBatchResult = Result<(AdvisedStreamReader, Option<RecordBatch>)>;
+
+/// An IPC stream reader that drops consumed spill data from the page cache
+/// as it advances (see [`spill_writeback`]): spill files are read exactly
+/// once, sequentially, so pages behind the read frontier have no future
+/// value, and retained clean cache can OOM-kill a memory-limited cgroup.
+struct AdvisedStreamReader {
+    inner: StreamReader<BufReader<File>>,
+    advisor: spill_writeback::SpillReadAdvisor,
+}
+
+impl AdvisedStreamReader {
+    fn new(inner: StreamReader<BufReader<File>>) -> Self {
+        Self {
+            inner,
+            advisor: spill_writeback::SpillReadAdvisor::new(),
+        }
+    }
+
+    fn next_batch(&mut self) -> Result<Option<RecordBatch>> {
+        let item = self.inner.next().transpose()?;
+        match &item {
+            Some(_) => {
+                let file = self.inner.get_ref().get_ref();
+                self.advisor.advise_progress(file);
+            }
+            None => {
+                let file = self.inner.get_ref().get_ref();
+                self.advisor.advise_closed(file);
+            }
+        }
+        Ok(item)
+    }
+}
+
+impl Drop for AdvisedStreamReader {
+    fn drop(&mut self) {
+        // Covers readers that stop early: the cached pages of the (deleted)
+        // spill file have no future value either way.
+        let file = self.inner.get_ref().get_ref();
+        self.advisor.advise_closed(file);
+    }
+}
 
 enum SpillReaderStreamState {
     /// Initial state: the stream was not initialized yet
@@ -85,7 +127,7 @@ enum SpillReaderStreamState {
     ReadInProgress(SpawnedTask<NextRecordBatchResult>),
 
     /// A read has finished and we wait for being polled again in order to start reading the next batch.
-    Waiting(StreamReader<BufReader<File>>),
+    Waiting(AdvisedStreamReader),
 
     /// The stream has finished, successfully or not.
     Done,
@@ -118,15 +160,19 @@ impl SpillReaderStream {
                 };
 
                 let task = SpawnedTask::spawn_blocking(move || {
-                    let file = BufReader::new(File::open(spill_file.path())?);
+                    let file = File::open(spill_file.path())?;
+                    // Spill files are read exactly once, sequentially.
+                    spill_writeback::SpillReadAdvisor::advise_opened(&file);
+                    let file = BufReader::new(file);
                     // SAFETY: DataFusion's spill writer strictly follows Arrow IPC specifications
                     // with validated schemas and buffers. Skip redundant validation during read
                     // to speedup read operation. This is safe for DataFusion as input guaranteed to be correct when written.
-                    let mut reader = unsafe {
+                    let reader = unsafe {
                         StreamReader::try_new(file, None)?.with_skip_validation(true)
                     };
+                    let mut reader = AdvisedStreamReader::new(reader);
 
-                    let next_batch = reader.next().transpose()?;
+                    let next_batch = reader.next_batch()?;
 
                     Ok((reader, next_batch))
                 });
@@ -192,7 +238,7 @@ impl SpillReaderStream {
                 };
 
                 let task = SpawnedTask::spawn_blocking(move || {
-                    let next_batch = reader.next().transpose()?;
+                    let next_batch = reader.next_batch()?;
 
                     Ok((reader, next_batch))
                 });
