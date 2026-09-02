@@ -101,3 +101,6 @@ name = "sort_preserving_merge"
 harness = false
 name = "aggregate_vectorized"
 required-features = ["test_utils"]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

@@ -20,6 +20,7 @@
 pub(crate) mod in_progress_spill_file;
 pub(crate) mod spill_manager;
 pub mod spill_pool;
+pub(crate) mod spill_writeback;
 
 // Moved for refactor, re-export to keep the public API stable
 pub use datafusion_common::utils::memory::get_record_batch_memory_size;
@@ -264,6 +265,8 @@ struct IPCStreamWriter {
     pub num_rows: usize,
     /// Bytes written
     pub num_bytes: usize,
+    /// Bounds the page-cache footprint of the spill file (Linux only).
+    writeback: spill_writeback::SpillWritebackAdvisor,
 }
 
 impl IPCStreamWriter {
@@ -294,6 +297,7 @@ impl IPCStreamWriter {
             num_rows: 0,
             num_bytes: 0,
             writer,
+            writeback: spill_writeback::SpillWritebackAdvisor::new(),
         })
     }
 
@@ -307,6 +311,14 @@ impl IPCStreamWriter {
         self.num_rows += delta_num_rows;
         let delta_num_bytes: usize = batch.get_array_memory_size();
         self.num_bytes += delta_num_bytes;
+
+        // Keep the page-cache footprint of the spill file bounded: queue
+        // asynchronous writeback for completed chunks and drop written pages
+        // once their writeback finishes. No-op on non-Linux platforms.
+        let file = self.writer.get_ref();
+        if let Ok(len) = file.metadata().map(|m| m.len()) {
+            self.writeback.advise_written(file, len);
+        }
         Ok((delta_num_rows, delta_num_bytes))
     }
 
@@ -317,7 +329,14 @@ impl IPCStreamWriter {
 
     /// Finish the writer
     pub fn finish(&mut self) -> Result<()> {
-        self.writer.finish().map_err(Into::into)
+        self.writer.finish()?;
+        // Flush the tail of the spill file and advise it out of the page
+        // cache; it will be read back (at most once) from disk.
+        let file = self.writer.get_ref();
+        if let Ok(len) = file.metadata().map(|m| m.len()) {
+            self.writeback.advise_finished(file, len);
+        }
+        Ok(())
     }
 }
 
